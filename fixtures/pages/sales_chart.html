@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quarterly sales</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 40px; color: #222; }
+    canvas { border: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <h1>Quarterly sales</h1>
+  <!-- The chart data exists only as pixels: the accessibility tree sees a bare canvas. -->
+  <canvas id="chart" width="480" height="260"></canvas>
+  <form id="answer-form" style="margin-top: 16px">
+    <label>Best quarter <input id="answer" name="answer"></label>
+    <button type="submit">Submit</button>
+  </form>
+  <div id="status" role="status"></div>
+  <script>
+    const data = [['Q1', 42], ['Q2', 77], ['Q3', 135], ['Q4', 96]];
+    const ctx = document.getElementById('chart').getContext('2d');
+    ctx.font = '14px system-ui';
+    data.forEach(([label, value], i) => {
+      const x = 40 + i * 110, h = value * 1.5;
+      ctx.fillStyle = ['#60a5fa', '#34d399', '#f87171', '#fbbf24'][i];
+      ctx.fillRect(x, 230 - h, 70, h);
+      ctx.fillStyle = '#222';
+      ctx.fillText(label, x + 22, 250);
+      ctx.fillText(String(value), x + 22, 222 - h);
+    });
+    document.getElementById('answer-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      document.getElementById('status').textContent =
+        'Submitted: ' + document.getElementById('answer').value.trim();
+    });
+  </script>
+</body>
+</html>

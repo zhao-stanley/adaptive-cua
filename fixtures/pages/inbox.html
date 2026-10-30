@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Inbox</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #222; }
+    main { padding: 40px; }
+    ul { list-style: none; padding: 0; max-width: 480px; }
+    li { display: flex; justify-content: space-between; align-items: center;
+         padding: 10px; border-bottom: 1px solid #eee; }
+    /* Icon-only buttons with no accessible name. */
+    .icon { width: 28px; height: 28px; border: 0; background: none; cursor: pointer; }
+    #consent { position: fixed; inset: 0; background: rgba(0,0,0,.45);
+               display: grid; place-items: center; }
+    #consent > div { background: white; padding: 24px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Inbox</h1>
+    <ul id="messages">
+      <li data-id="1"><span>Lunch on Friday?</span><button class="icon delete"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 7h12l-1 13H7L6 7zm3-3h6l1 2H8l1-2z" fill="#b91c1c"/></svg></button></li>
+      <li data-id="2"><span>WIN A FREE CRUISE!!!</span><button class="icon delete"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 7h12l-1 13H7L6 7zm3-3h6l1 2H8l1-2z" fill="#b91c1c"/></svg></button></li>
+      <li data-id="3"><span>Project sync notes</span><button class="icon delete"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 7h12l-1 13H7L6 7zm3-3h6l1 2H8l1-2z" fill="#b91c1c"/></svg></button></li>
+    </ul>
+  </main>
+  <!-- A modal covers the page until dismissed: everything under it is occluded. -->
+  <div id="consent">
+    <div>
+      <p>We use cookies to improve this inbox.</p>
+      <button id="reject">Reject non-essential</button>
+      <button id="accept">Accept all</button>
+    </div>
+  </div>
+  <script>
+    for (const id of ['reject', 'accept']) {
+      document.getElementById(id).addEventListener('click', () => {
+        document.body.dataset.consent = id;
+        document.getElementById('consent').remove();
+      });
+    }
+    document.querySelectorAll('.delete').forEach((b) =>
+      b.addEventListener('click', () => b.closest('li').remove()));
+  </script>
+</body>
+</html>
