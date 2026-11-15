@@ -2,7 +2,7 @@
 
 import json
 
-from adaptive_cua.browser.tools import TOOL_ARGUMENTS
+from src.browser.tools import TOOL_ARGUMENTS
 
 DESCRIPTIONS = {
     "observe": "Refresh full visible page structure; images are added automatically when needed.",
@@ -58,6 +58,16 @@ def build_schemas():
             "request_observation",
             "Request full structure, visual crops, or a full viewport screenshot when more context is needed.",
             {"detail": {"type": "string", "enum": ["full", "crops", "screenshot"]}},
+        )
+    )
+    schemas.append(
+        function_schema(
+            "inspect_region",
+            "Inspect a fresh viewport region at 1–4x zoom; coordinates and dimensions are CSS pixels.",
+            {
+                **{key: {"type": "number"} for key in ("x", "y", "width", "height")},
+                "zoom": {"type": "integer", "enum": [1, 2, 3, 4]},
+            },
         )
     )
     schemas.append(

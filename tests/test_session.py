@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from adaptive_cua.browser.session import BrowserSession
+from src.browser.session import BrowserSession
 
 
 def test_new_task_gets_fresh_browser_and_clears_storage():
@@ -28,7 +28,7 @@ def test_new_task_gets_fresh_browser_and_clears_storage():
 def test_partial_launch_releases_runtime(monkeypatch, failure):
     runtime = Mock()
     runtime.chromium.launch.side_effect = failure
-    monkeypatch.setattr("adaptive_cua.browser.session.sync_playwright", lambda: Mock(start=lambda: runtime))
+    monkeypatch.setattr("src.browser.session.sync_playwright", lambda: Mock(start=lambda: runtime))
     session = BrowserSession()
     with pytest.raises(type(failure)):
         session.start()

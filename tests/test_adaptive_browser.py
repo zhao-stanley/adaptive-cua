@@ -3,8 +3,8 @@ import io
 import pytest
 from PIL import Image
 
-from adaptive_cua.browser.session import BrowserSession
-from adaptive_cua.representation.observations import AdaptiveObservations
+from src.browser.session import BrowserSession
+from src.representation.observations import AdaptiveObservations
 
 
 @pytest.fixture

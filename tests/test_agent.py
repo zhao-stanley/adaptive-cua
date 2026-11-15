@@ -7,13 +7,13 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from adaptive_cua.agent.config import AgentConfig, ConfigurationError
-from adaptive_cua.agent.loop import Agent
-from adaptive_cua.agent.model import ModelError, OpenAIModel
-from adaptive_cua.agent.observation import observation_content
-from adaptive_cua.agent.tools import TOOL_SCHEMAS, parse_arguments
-from adaptive_cua.browser.models import ActionResult, BrowserSnapshot, Element
-from adaptive_cua.browser.session import BrowserSession
+from src.agent.config import AgentConfig, ConfigurationError
+from src.agent.loop import Agent
+from src.agent.model import ModelError, OpenAIModel
+from src.agent.observation import observation_content
+from src.agent.tools import TOOL_SCHEMAS, parse_arguments
+from src.browser.models import ActionResult, BrowserSnapshot, Element
+from src.browser.session import BrowserSession
 
 
 def snapshot(version=1):
@@ -204,7 +204,7 @@ def test_limits_stop_before_extra_actions(tmp_path, limits, steps):
 def test_deadline_stops_before_request(tmp_path, monkeypatch):
     agent = make_agent(tmp_path, ScriptedModel())
     clock = iter([0, 1000])
-    monkeypatch.setattr("adaptive_cua.agent.loop.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("src.agent.loop.time.monotonic", lambda: next(clock))
     assert agent.run("Task", emit=lambda _: None).status == "limit"
     assert not agent.model.requests
 
@@ -256,7 +256,7 @@ def test_adapter_request_preserves_protocol(monkeypatch):
     client = Mock()
     client.responses.create.return_value = SimpleNamespace(model_dump=lambda **kwargs: response())
     monkeypatch.setenv("OPENAI_API_KEY", "test-not-real")
-    monkeypatch.setattr("adaptive_cua.agent.model.OpenAI", lambda **kwargs: client)
+    monkeypatch.setattr("src.agent.model.OpenAI", lambda **kwargs: client)
     model = OpenAIModel(AgentConfig("configured-model"))
     history = [{"role": "user", "content": observation_content(snapshot())}]
     model.respond(history, timeout=12, max_output_tokens=100)

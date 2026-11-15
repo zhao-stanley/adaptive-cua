@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from adaptive_cua.browser.session import BrowserSession
+from src.browser.session import BrowserSession
 
 
 @pytest.fixture
@@ -205,7 +205,7 @@ def test_executed_action_is_not_reported_as_failed_if_capture_fails(browser, mon
 def test_cli_manual_tools(browser, tmp_path):
     import json
 
-    from adaptive_cua.cli import run_chat
+    from src.cli import run_chat
 
     page = tmp_path / "chat.html"
     page.write_text("<title>CLI test</title><button>Visible button</button>")

@@ -38,7 +38,7 @@ class AdaptivePolicy:
             if self.failures >= 2:
                 screenshot = True
                 reasons.append("repeated_action_errors")
-        elif action and action not in {"observe", "list_tabs", "request_observation"}:
+        elif action and action not in {"observe", "list_tabs", "request_observation", "inspect_region"}:
             self.failures = 0
             target = previous_structure.get(arguments.get("element_id"), {})
             expected_noop = (

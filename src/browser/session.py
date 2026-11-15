@@ -15,7 +15,7 @@ class BrowserSession:
 
     @property
     def tools(self):
-        from adaptive_cua.browser.tools import BrowserTools
+        from src.browser.tools import BrowserTools
 
         if self._tools is None:
             self._tools = BrowserTools(self)

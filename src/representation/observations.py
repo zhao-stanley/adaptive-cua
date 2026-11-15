@@ -4,10 +4,16 @@ import base64
 import json
 from dataclasses import dataclass
 
-from adaptive_cua.browser.models import BrowserSnapshot
-from adaptive_cua.policy.adaptive import AdaptivePolicy
-from adaptive_cua.representation.structure import diff, meaningful_change, page_key, visible_structure
-from adaptive_cua.representation.visual import changed_pixels, make_visual, screenshot_image, visual_candidates
+from src.browser.models import BrowserSnapshot
+from src.policy.adaptive import AdaptivePolicy
+from src.representation.structure import diff, meaningful_change, page_key, visible_structure
+from src.representation.visual import (
+    changed_pixels,
+    inspection_region,
+    make_visual,
+    screenshot_image,
+    visual_candidates,
+)
 
 
 @dataclass
@@ -39,7 +45,15 @@ class AdaptiveObservations:
         self.policy = AdaptivePolicy()
 
     def prepare(
-        self, snapshot: BrowserSnapshot, *, action=None, arguments=None, status="ok", requested="auto", force_full=False
+        self,
+        snapshot: BrowserSnapshot,
+        *,
+        action=None,
+        arguments=None,
+        status="ok",
+        requested="auto",
+        force_full=False,
+        region=None,
     ) -> PreparedObservation:
         if requested not in {"auto", "full", "crops", "screenshot"}:
             raise ValueError("Unknown observation detail.")
@@ -51,6 +65,7 @@ class AdaptiveObservations:
             or snapshot.version <= self.previous.version
         )
         image = screenshot_image(snapshot)
+        inspected = inspection_region(region, snapshot.viewport) if region is not None else None
         changes = diff(self.structure, current)
         metadata_changed = self.previous is not None and (
             snapshot.title != self.previous.title or snapshot.tabs != self.previous.tabs
@@ -84,18 +99,22 @@ class AdaptiveObservations:
             if full_image
             else [make_visual(image, region) for region in regions]
         )
+        if inspected is not None:
+            visuals = [make_visual(image, inspected, scale=region["zoom"])]
+            full_image = False
+            reasons.append("requested_region")
         sources = {} if reset else self.visual_sources
         force_images = reset or requested in {"screenshot", "crops"} or decision.screenshot or self.mode == "full"
         images, descriptors, next_sources = [], [], {}
         for visual in visuals:
-            send = force_images or visual.id not in sources
+            send = inspected is not None or force_images or visual.id not in sources
             source_version = snapshot.version if send else sources[visual.id]
             descriptor = {
                 "id": visual.id,
                 "kind": visual.kind,
                 "bounds": visual.bounds,
                 "coordinate_space": "viewport_css",
-                "scale": 1,
+                "scale": visual.scale,
                 "source_observation_version": source_version,
                 "image_index": len(images) if send else None,
             }

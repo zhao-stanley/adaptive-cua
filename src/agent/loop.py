@@ -5,13 +5,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from adaptive_cua.agent.config import AgentConfig
-from adaptive_cua.agent.model import ModelError, OpenAIModel
-from adaptive_cua.agent.tools import parse_arguments
-from adaptive_cua.agent.trace import RunTrace
-from adaptive_cua.browser.session import BrowserSession
-from adaptive_cua.representation.observations import AdaptiveObservations
-from adaptive_cua.representation.visual import ObservationError
+from src.agent.config import AgentConfig
+from src.agent.model import ModelError, OpenAIModel
+from src.agent.tools import parse_arguments
+from src.agent.trace import RunTrace
+from src.browser.session import BrowserSession
+from src.representation.observations import AdaptiveObservations
+from src.representation.visual import ObservationError, inspection_region
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,8 @@ class Agent:
         self.config = config
         self.history: list[dict] = []
         self.total_tokens = 0
+        self.context_tokens = 0
+        self.compaction_disabled = False
         self.observations = AdaptiveObservations(
             mode=config.observation_mode,
             full_refresh_interval=config.full_refresh_interval,
@@ -58,7 +60,9 @@ class Agent:
                 }
             )
 
-    def _output(self, call: dict, data: dict, snapshot=None, *, action=None, arguments=None, requested="auto"):
+    def _output(
+        self, call: dict, data: dict, snapshot=None, *, action=None, arguments=None, requested="auto", region=None
+    ):
         content = [{"type": "input_text", "text": json.dumps(data)}]
         prepared = None
         if snapshot is not None:
@@ -68,6 +72,7 @@ class Agent:
                 arguments=arguments,
                 status=data["status"],
                 requested=requested,
+                region=region,
             )
             content.extend(prepared.content())
         self.history.append({"type": "function_call_output", "call_id": call["call_id"], "output": content})
@@ -94,13 +99,20 @@ class Agent:
         requested = args["detail"] if name == "request_observation" else ("full" if name == "observe" else "auto")
         result = (
             self.session.tools.execute("observe")
-            if name == "request_observation"
+            if name in {"request_observation", "inspect_region"}
             else self.session.tools.execute(name, **args)
         )
         if result.observation is None:
             # Supply a fresh view for recovery, without repeating the failed action.
             refreshed = self.session.tools.execute("observe")
             result.observation = refreshed.observation
+        region = args if name == "inspect_region" and result.observation is not None else None
+        if region is not None:
+            try:
+                inspection_region(region, result.observation.viewport)
+            except ValueError as exc:
+                region = None
+                result.status, result.error = "invalid_arguments", str(exc)
         prepared = self._output(
             call,
             {
@@ -113,11 +125,51 @@ class Agent:
             action=name,
             arguments=args,
             requested=requested,
+            region=region,
         )
         emit(f"[result] {result.status}")
         if prepared is not None:
             emit(f"[observation] {prepared.data['level']} ({len(prepared.images)} images)")
         return None
+
+    def _compact_if_needed(self, deadline, emit):
+        threshold = self.config.compact_after_tokens
+        if not threshold or self.compaction_disabled or self.context_tokens < threshold:
+            return
+        answered = {item["call_id"] for item in self.history if item.get("type") == "function_call_output"}
+        if any(item.get("type") == "function_call" and item["call_id"] not in answered for item in self.history):
+            raise ModelError("Cannot compact history with unanswered tool calls.")
+        emit("[memory] Compacting task history")
+        started = time.monotonic()
+        try:
+            compacted = self.model.compact(self.history, timeout=min(self.config.api_timeout, deadline - started))
+        except ModelError:
+            self.compaction_disabled = True
+            self.trace.event("compaction_failed")
+            emit("[memory] Compaction failed; keeping history. Automatic compaction disabled until /new.")
+            return
+        usage = compacted.get("usage") or {}
+        self.total_tokens += usage.get("total_tokens", 0)
+        output = compacted.get("output")
+        if not isinstance(output, list) or not output or not any(i.get("type") == "compaction" for i in output):
+            self.compaction_disabled = True
+            self.trace.event("compaction_failed", reason="invalid_output", usage=usage)
+            emit("[memory] Invalid compaction response; keeping history.")
+            return
+        # Keep the provider's complete replacement window, including retained messages.
+        self.history = list(output)
+        self.context_tokens = 0
+        self.observations.reset()
+        self.trace.event(
+            "compaction", usage=usage, total_tokens=self.total_tokens, latency_seconds=time.monotonic() - started
+        )
+        fresh = self.session.tools.execute("observe")
+        if fresh.observation is None:
+            raise ObservationError("History compacted, but browser refresh failed; send a follow-up to retry.")
+        prepared = self.observations.prepare(fresh.observation, force_full=True, requested="screenshot")
+        self.history.append({"role": "user", "content": prepared.content()})
+        self.trace.observation(fresh.observation, prepared)
+        emit("[memory] Task history compacted; fresh browser baseline supplied")
 
     def _run(self, message: str, emit: Callable[[str], None]) -> AgentOutcome:
         deadline = time.monotonic() + self.config.max_seconds
@@ -142,6 +194,10 @@ class Agent:
                 return AgentOutcome(
                     "limit", "Execution limit reached. Browser remains open; inspect it before continuing."
                 )
+            self._compact_if_needed(deadline, emit)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or self.total_tokens >= self.config.max_tokens:
+                return AgentOutcome("limit", "Execution limit reached during compaction. Browser remains open.")
             emit(f"[model] Step {step}/{self.config.max_steps}")
             started = time.monotonic()
             response = self.model.respond(
@@ -151,6 +207,7 @@ class Agent:
             )
             usage = response.get("usage") or {}
             self.total_tokens += usage.get("total_tokens", 0)
+            self.context_tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
             outputs = response.get("output", [])
             calls = [item for item in outputs if item.get("type") == "function_call"]
             text = "\n".join(

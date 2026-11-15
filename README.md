@@ -79,6 +79,7 @@ interruption results so resuming does not replay them.
 | `--api-timeout` | 60 | Timeout for a single model request |
 | `--trace-dir` | `runs` | Root directory for local task traces |
 | `--observation-mode` | `adaptive` | Use `full` to send full structure and a screenshot every step |
+| `--compact-after-tokens` | 24000 | Reported context size triggering compaction; 0 disables it |
 | `--full-refresh-interval` | 12 | Send a full structure after this many deltas; 0 disables periodic refreshes |
 
 Time and task-token limits are checked between steps: in-flight browser operations
@@ -138,11 +139,33 @@ an action as failed. Focusing an input, entering its existing value, and keyboar
 actions are not treated as repeated no-effect failures. Read-only observations
 do not erase failure history; progress or a new page resets escalation.
 
-History remains intact, including reasoning items and the observations on which
-deltas and cached images depend. Historical images are still included when replaying
-that history to the Responses API. There is no automatic conversation compaction
-yet. Future history pruning must reset the representation layer and send a full
-baseline with required images. Token limits still bound long tasks.
+Task memory lives within the current session and is cleared by `/new`. History
+preserves tool results and reasoning until the latest reported input + output
+context reaches `--compact-after-tokens` (default 24000; 0 disables compaction).
+Between completed tool calls, the agent uses OpenAI Responses compaction and keeps
+the entire returned context. It then supplies fresh full structure and a full
+screenshot, resetting delta and image references. Compaction usage counts toward
+the task token budget; encrypted memory is not written to traces. If compaction
+fails, history is retained and automatic compaction is disabled until `/new`.
+The selected model must support compaction. The threshold is based on the last
+reported usage, not a prediction of the next observation's size; configure it
+below the model's context limit with room for new observations. Memory is not
+persisted across tasks or process restarts.
+
+For targeted inspection, the model can call:
+
+```json
+{"x": 100, "y": 80, "width": 200, "height": 120, "zoom": 3}
+```
+
+with `inspect_region`. This captures a fresh viewport and returns a magnified
+crop, plus the current structure/delta. All arguments are required. Regions must
+fit inside the viewport; zoom is an integer from 1–4 and output is limited to four
+million pixels. Fractional bounds round outward; returned bounds are authoritative.
+Map image coordinates to clicks with `viewport_x = bounds.x + image_x / scale`
+(and likewise for y). Magnification resizes existing pixels; it does not zoom the
+browser or create additional detail. This is an agent observation tool, not a
+manual `/tool` browser action.
 
 ## Browser observations and actions
 
@@ -200,11 +223,11 @@ representation/policy are implemented. Evaluation remains a placeholder.
 
 | Folder | Proposal section | Purpose |
 |---|---|---|
-| `src/adaptive_cua/browser/` | 4.1 | Drive Chromium; capture the accessibility tree, DOM snapshot, and screenshot |
-| `src/adaptive_cua/representation/` | 3.2, 3.3 | Structured representation, visibility filters, changes between steps, missing-content detection |
-| `src/adaptive_cua/policy/` | 3.3 | Choose the observation level at each step |
-| `src/adaptive_cua/agent/` | 3.3, 4.1 | Agent loop and actions |
-| `src/adaptive_cua/eval/` | 4.2-4.4 | Conditions, tasks, metrics, step-level analysis |
+| `src/browser/` | 4.1 | Drive Chromium; capture the accessibility tree, DOM snapshot, and screenshot |
+| `src/representation/` | 3.2, 3.3 | Structured representation, visibility filters, changes between steps, missing-content detection |
+| `src/policy/` | 3.3 | Choose the observation level at each step |
+| `src/agent/` | 3.3, 4.1 | Agent loop and actions |
+| `src/eval/` | 4.2-4.4 | Conditions, tasks, metrics, step-level analysis |
 | `tests/` | | Self-contained browser scenarios and CLI tests |
 | `docs/decisions.md` | | Questions for the team to decide before building |
 

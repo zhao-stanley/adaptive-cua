@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
 
-from adaptive_cua.browser.models import BrowserSnapshot
+from src.browser.models import BrowserSnapshot
 
 
 class ObservationError(ValueError):
@@ -20,6 +20,7 @@ class Visual:
     kind: str
     bounds: dict[str, int]
     png: bytes
+    scale: int = 1
 
 
 def box(bounds: dict, width: int, height: int, padding: int = 0):
@@ -127,11 +128,29 @@ def visual_candidates(snapshot: BrowserSnapshot, image: Image.Image) -> list[tup
     return merge_boxes(candidates)
 
 
-def make_visual(image: Image.Image, region: tuple, kind="crop") -> Visual:
+def make_visual(image: Image.Image, region: tuple, kind="crop", scale=1) -> Visual:
     left, top, right, bottom = region
     crop = image.crop(region)
+    if scale != 1:
+        crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
     buffer = io.BytesIO()
     crop.save(buffer, format="PNG")
     png = buffer.getvalue()
     identifier = hashlib.sha256(str(region).encode() + png).hexdigest()[:16]
-    return Visual(identifier, kind, {"x": left, "y": top, "width": right - left, "height": bottom - top}, png)
+    return Visual(identifier, kind, {"x": left, "y": top, "width": right - left, "height": bottom - top}, png, scale)
+
+
+def inspection_region(arguments, viewport):
+    """Validate a bounded CSS region and return its outward-rounded pixel box."""
+    x, y, width, height = (arguments[k] for k in ("x", "y", "width", "height"))
+    zoom = arguments["zoom"]
+    if not all(type(v) in {int, float} and math.isfinite(v) for v in (x, y, width, height)):
+        raise ValueError("Region coordinates must be finite numbers.")
+    if type(zoom) is not int or not 1 <= zoom <= 4:
+        raise ValueError("Zoom must be an integer from 1 to 4.")
+    if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > viewport["width"] or y + height > viewport["height"]:
+        raise ValueError("Region must be wholly inside the CSS viewport with positive dimensions.")
+    region = (math.floor(x), math.floor(y), math.ceil(x + width), math.ceil(y + height))
+    if (region[2] - region[0]) * (region[3] - region[1]) * zoom * zoom > 4_000_000:
+        raise ValueError("Zoomed region exceeds four million pixels; request a smaller region or zoom.")
+    return region

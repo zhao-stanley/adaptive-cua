@@ -9,9 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import Error as PlaywrightError
 
-from adaptive_cua.agent.config import AgentConfig, ConfigurationError
-from adaptive_cua.agent.loop import Agent, create_agent
-from adaptive_cua.browser.session import BrowserSession
+from src.agent.config import AgentConfig, ConfigurationError
+from src.agent.loop import Agent, create_agent
+from src.browser.session import BrowserSession
 
 HELP = "Commands: /new, /observe, /tool NAME {JSON arguments}, /help, /quit. Ctrl+C interrupts; Ctrl+D exits."
 
@@ -134,6 +134,12 @@ def main() -> int:
         default=12,
         help="Send full structure after this many deltas; 0 disables periodic refreshes.",
     )
+    parser.add_argument(
+        "--compact-after-tokens",
+        type=int,
+        default=24_000,
+        help="Compact history after this many reported context tokens; 0 disables compaction.",
+    )
     args = parser.parse_args()
     try:
         return run_chat(
@@ -150,6 +156,7 @@ def main() -> int:
                     trace_dir=args.trace_dir,
                     observation_mode=args.observation_mode,
                     full_refresh_interval=args.full_refresh_interval,
+                    compact_after_tokens=args.compact_after_tokens,
                 ),
             ),
         )

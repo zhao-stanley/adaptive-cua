@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from adaptive_cua.agent.observation import observation_data
-from adaptive_cua.browser.models import BrowserSnapshot
+from src.agent.observation import observation_data
+from src.browser.models import BrowserSnapshot
 
 
 class RunTrace:

@@ -21,8 +21,11 @@ class AgentConfig:
     trace_dir: Path = Path("runs")
     observation_mode: str = "adaptive"
     full_refresh_interval: int = 12
+    compact_after_tokens: int = 24_000
 
     def __post_init__(self):
+        if type(self.compact_after_tokens) is not int or self.compact_after_tokens < 0:
+            raise ConfigurationError("compact_after_tokens must be a nonnegative integer (0 disables compaction).")
         if self.observation_mode not in {"adaptive", "full"}:
             raise ConfigurationError("observation_mode must be adaptive or full.")
         if type(self.full_refresh_interval) is not int or self.full_refresh_interval < 0:

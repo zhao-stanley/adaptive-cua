@@ -3,8 +3,8 @@
 import base64
 import json
 
-from adaptive_cua.browser.models import BrowserSnapshot
-from adaptive_cua.representation.structure import visible_structure
+from src.browser.models import BrowserSnapshot
+from src.representation.structure import visible_structure
 
 
 def observation_data(snapshot: BrowserSnapshot) -> dict:

@@ -4,9 +4,9 @@ from dataclasses import replace
 import pytest
 from PIL import Image, ImageDraw
 
-from adaptive_cua.browser.models import BrowserSnapshot, Element
-from adaptive_cua.representation.observations import AdaptiveObservations
-from adaptive_cua.representation.visual import screenshot_image
+from src.browser.models import BrowserSnapshot, Element
+from src.representation.observations import AdaptiveObservations
+from src.representation.visual import screenshot_image
 
 
 def element(

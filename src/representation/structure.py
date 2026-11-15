@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from adaptive_cua.browser.models import BrowserSnapshot
+from src.browser.models import BrowserSnapshot
 
 
 def visible_structure(snapshot: BrowserSnapshot) -> dict[str, dict]:

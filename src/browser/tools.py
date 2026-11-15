@@ -11,8 +11,8 @@ from uuid import uuid4
 
 from playwright.sync_api import CDPSession, Error, Page
 
-from adaptive_cua.browser.models import ActionResult, BrowserSnapshot, Element
-from adaptive_cua.browser.session import BrowserSession
+from src.browser.models import ActionResult, BrowserSnapshot, Element
+from src.browser.session import BrowserSession
 
 GEOMETRY = Path(__file__).with_name("geometry.js").read_text()
 

@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
-from adaptive_cua.agent.loop import AgentOutcome
-from adaptive_cua.browser.session import BrowserSession
-from adaptive_cua.cli import run_chat
+from src.agent.loop import AgentOutcome
+from src.browser.session import BrowserSession
+from src.cli import run_chat
 
 
 def reader(*events):
