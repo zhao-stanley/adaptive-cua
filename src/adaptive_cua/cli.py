@@ -1,11 +1,16 @@
-"""Terminal chat shell. Model execution is added in a later milestone."""
+"""Terminal chat and manual browser tools for the OpenAI agent."""
 
 import argparse
 import json
+import os
 from collections.abc import Callable
+from pathlib import Path
 
+from dotenv import load_dotenv
 from playwright.sync_api import Error as PlaywrightError
 
+from adaptive_cua.agent.config import AgentConfig, ConfigurationError
+from adaptive_cua.agent.loop import Agent, create_agent
 from adaptive_cua.browser.session import BrowserSession
 
 HELP = "Commands: /new, /observe, /tool NAME {JSON arguments}, /help, /quit. Ctrl+C interrupts; Ctrl+D exits."
@@ -16,10 +21,12 @@ def run_chat(
     *,
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
+    agent_factory: Callable[[BrowserSession], Agent] = create_agent,
 ) -> int:
     write("Adaptive CUA — terminal chat")
-    write("Model calls are not connected yet. Browser tools can be exercised with /tool and /observe.")
+    write("Describe your task to the agent, or use /tool and /observe to operate the browser manually.")
     write(HELP)
+    agent = None
     try:
         while True:
             try:
@@ -32,6 +39,9 @@ def run_chat(
                     write(HELP)
                     continue
                 if message == "/new":
+                    if agent is not None:
+                        agent.close()
+                        agent = None
                     session.start()
                     write("[browser] Started a fresh task. Previous conversation cleared.")
                     continue
@@ -46,6 +56,9 @@ def run_chat(
                         write(f"Invalid tool arguments: {exc}")
                         continue
                     if not session.active:
+                        if agent is not None:
+                            agent.close()
+                            agent = None
                         session.start()
                     result = session.tools.execute(name, **arguments)
                     write(f"[tool] {result.status}" + (f": {result.error}" if result.error else ""))
@@ -64,10 +77,19 @@ def run_chat(
                     write("Unknown command. " + HELP)
                     continue
                 if not session.active:
+                    if agent is not None:
+                        agent.close()
+                        agent = None
+                if agent is None:
+                    agent = agent_factory(session)
+                    write(f"[trace] {agent.trace.path}")
+                if not session.active:
                     session.start()
                     write("[browser] Started a fresh task.")
                 session.messages.append(message)
-                write("Agent > Message saved for this task. Agent execution is not implemented yet.")
+                outcome = agent.run(message, emit=write)
+                write(f"Agent > {outcome.message}")
+                write(f"[agent] {outcome.status}")
             except KeyboardInterrupt:
                 write("\nInterrupted. Back at the chat prompt; use /new to reset or /quit to exit.")
             except EOFError:
@@ -75,18 +97,62 @@ def run_chat(
             except PlaywrightError as exc:
                 write(f"Browser error: {exc}")
                 write("Check Chromium is installed with `uv run playwright install chromium`, then retry.")
+            except (ConfigurationError, OSError) as exc:
+                write(f"Configuration or local file error: {exc}")
     finally:
-        session.close()
+        try:
+            if agent is not None:
+                agent.close()
+        finally:
+            session.close()
     write("Session closed. Goodbye.")
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Chat with the adaptive browser agent (session shell).")
+    load_dotenv(Path.cwd() / ".env", override=False)
+    parser = argparse.ArgumentParser(description="Chat with an OpenAI model controlling an isolated browser.")
     parser.add_argument("--headless", action="store_true", help="Run Chromium without a visible window.")
+    parser.add_argument(
+        "--model", default=os.environ.get("OPENAI_MODEL", ""), help="OpenAI model ID (or OPENAI_MODEL)."
+    )
+    parser.add_argument("--max-steps", type=int, default=30, help="Maximum model requests per user message.")
+    parser.add_argument("--max-seconds", type=float, default=300, help="Time budget per user message.")
+    parser.add_argument("--max-tokens", type=int, default=100_000, help="Cumulative token budget per task.")
+    parser.add_argument("--max-output-tokens", type=int, default=4096, help="Output token cap per model request.")
+    parser.add_argument("--api-timeout", type=float, default=60, help="Maximum time for one API request.")
+    parser.add_argument("--trace-dir", type=Path, default=Path("runs"), help="Directory for local task traces.")
+    parser.add_argument(
+        "--observation-mode",
+        choices=["adaptive", "full"],
+        default="adaptive",
+        help="Adaptive text/diffs/crops, or full structure and screenshot every step.",
+    )
+    parser.add_argument(
+        "--full-refresh-interval",
+        type=int,
+        default=12,
+        help="Send full structure after this many deltas; 0 disables periodic refreshes.",
+    )
     args = parser.parse_args()
     try:
-        return run_chat(BrowserSession(headless=args.headless))
+        return run_chat(
+            BrowserSession(headless=args.headless),
+            agent_factory=lambda session: create_agent(
+                session,
+                AgentConfig(
+                    model=args.model,
+                    max_steps=args.max_steps,
+                    max_seconds=args.max_seconds,
+                    max_tokens=args.max_tokens,
+                    max_output_tokens=args.max_output_tokens,
+                    api_timeout=args.api_timeout,
+                    trace_dir=args.trace_dir,
+                    observation_mode=args.observation_mode,
+                    full_refresh_interval=args.full_refresh_interval,
+                ),
+            ),
+        )
     except PlaywrightError as exc:
         print(f"Browser cleanup failed: {exc}")
         return 1

@@ -14,8 +14,13 @@ uv run playwright install chromium
 uv run pytest
 ```
 
-`uv run pytest` checks browser capture, actions, target validation, and session isolation in Chromium.
-No API key is required yet: the CLI exposes browser tools, but model calls are not connected.
+`uv run pytest` checks browser capture, actions, session isolation, adaptive observations, and the agent loop.
+Tests use simulated model responses and real Chromium; no API key or paid calls are required.
+
+For the live agent, set `OPENAI_API_KEY` and `OPENAI_MODEL` in your environment or
+in a local `.env` using `.env.example` as a template. Choose a model your API project
+can access that supports image input and function calling. No model is selected
+implicitly. Environment variables override `.env` values.
 
 ## Terminal chat
 
@@ -23,11 +28,16 @@ No API key is required yet: the CLI exposes browser tools, but model calls are n
 uv run adaptive-cua
 # Or run without a browser window:
 uv run adaptive-cua --headless
+# Override the configured model:
+uv run adaptive-cua --model YOUR_MODEL_ID
 ```
 
-The first task message opens a fresh Chromium browser. Follow-up messages stay in
-the same task and are retained in memory. Agent execution will be connected in a
-later milestone; messages currently receive an explicit placeholder reply.
+After configuration succeeds, the first task message opens a fresh Chromium browser.
+The OpenAI model receives the current page and calls one browser tool at a time.
+Follow-up messages share the same browser and model conversation. The agent can
+ask a clarification question, report completion, or explain why it cannot proceed.
+For example, enter: `Open https://example.com and tell me the page heading.`
+Manual `/tool` and `/observe` commands remain usable without API credentials.
 
 - `/new`: close the current browser, clear the conversation, and open a fresh browser.
 - `/observe`: capture and print the current page's visible element references and tabs.
@@ -38,7 +48,101 @@ later milestone; messages currently receive an explicit placeholder reply.
 
 Each task uses an isolated browser context with a 1280×720 viewport. Cookies and
 other browser state do not carry over to the next task. The browser stays open
-between messages until `/new` or exit. Conversations are not yet saved to disk.
+between messages until `/new` or exit, including after the agent reports completion.
+`/new` also clears model history and the cumulative token counter.
+
+## Agent loop and limits
+
+The agent uses the Responses API with custom function tools. By default it sends
+full visible structure initially, then element changes, adding images when needed.
+Raw DOM/accessibility capture data and hidden elements are not sent to the model.
+Browser capture still takes a full screenshot every step for visual detection and
+debugging; capture does not imply sending that screenshot to the model.
+
+Browser actions require the latest observation version. Failed or uncertain actions
+return a fresh observation when possible; they are never automatically retried.
+The model uses `ask_user` to pause for input and `finish` to report `completed` or
+`blocked`. A text-only model reply also returns control to the CLI. Completion is
+the model's assessment based on browser evidence, not an independent task evaluator.
+
+Ctrl+C interrupts execution and returns to the prompt with the browser open.
+If an action was interrupted, its outcome is recorded as uncertain; the next
+message starts with a fresh observation. Pending tool calls are paired with
+interruption results so resuming does not replay them.
+
+| Option | Default | Scope |
+|---|---|---|
+| `--max-steps` | 30 | Model requests per user message |
+| `--max-seconds` | 300 | Time budget per user message |
+| `--max-tokens` | 100000 | Reported input + output tokens across the task |
+| `--max-output-tokens` | 4096 | Maximum output tokens per request |
+| `--api-timeout` | 60 | Timeout for a single model request |
+| `--trace-dir` | `runs` | Root directory for local task traces |
+| `--observation-mode` | `adaptive` | Use `full` to send full structure and a screenshot every step |
+| `--full-refresh-interval` | 12 | Send a full structure after this many deltas; 0 disables periodic refreshes |
+
+Time and task-token limits are checked between steps: in-flight browser operations
+can finish after the time budget, and an API response can exceed the remaining
+task-token budget through its input usage. Once a limit is reached no further
+browser action is dispatched. API requests use bounded timeouts and no automatic
+retries. Step/time limits reset on follow-up; the task-token limit resets on `/new`.
+
+Each agent task creates a directory under `runs/` containing `events.jsonl` and
+numbered observation PNGs. `observation-*.png` files are complete captures;
+`sent-*.png` files are the actual crops/screenshots included in model observations.
+`observation_sent` events record the exact text payload, image filenames, chosen
+detail level, and reasons. Events also include messages, tool arguments/results,
+usage, timings, and pause reasons. These traces contain task
+and page content. Credentials and model reasoning content are not logged.
+Trace directories are excluded from Git. They are for inspection, not restartable
+browser checkpoints; conversation continuity currently lasts only within the CLI process.
+
+## Adaptive observations
+
+The representation layer keeps a complete visible element table in application
+memory. Visible body text is included alongside names, values, states, and bounds,
+so instructions and status messages do not require screenshots just to be read.
+
+| Situation | Observation |
+|---|---|
+| First step, user follow-up, navigation/reload, tab or viewport change | Full visible structure |
+| Routine action on the same page | Added, updated, and removed elements |
+| Canvas, unnamed icon control, or unexplained visual region | Structure/delta plus positioned crops |
+| More than four crops or crops cover over half the viewport | Full viewport image |
+| Action error, or action with no observed effect | Fresh full structure |
+| Two action errors, or the same action twice with no observed effect | Full viewport image and structure |
+| Progress resumes | Return to changes and any needed crops |
+
+Each delta has a `base_version`; updated records completely replace the previous
+record for that ID. Page metadata accompanies every update. A same-URL reload
+still resets the baseline because the document identity changes. Periodic full
+structure refreshes help reestablish the current state without extra model calls.
+
+Visual detection flags known visual elements and scans unrepresented screenshot
+areas using pixel variance. Coverage uses visible text rectangles and named
+controls, not the bounding box of an entire named container. Nearby crop regions
+are merged and clipped to the viewport. Crops preserve CSS-pixel scale: add their
+origin to crop-local coordinates to obtain click coordinates.
+
+Unchanged images are not attached again as new observations: their visual IDs reference an earlier observation
+in the existing model history. Changed or moved crops are sent again; disappeared
+regions are invalidated. Fresh task/context baselines resend required images.
+The model can call `request_observation` with `detail` set to `full`, `crops`, or
+`screenshot`; explicit visual requests resend imagery. This is an agent-level tool,
+while manual `/observe` continues to show the browser's raw visible element list.
+
+These are deterministic heuristics, not a semantic sufficiency test. Backgrounds,
+complex layouts, or animations can cause unnecessary imagery; subtle visual
+content can be missed. A lack of change only increases detail, and does not mark
+an action as failed. Focusing an input, entering its existing value, and keyboard
+actions are not treated as repeated no-effect failures. Read-only observations
+do not erase failure history; progress or a new page resets escalation.
+
+History remains intact, including reasoning items and the observations on which
+deltas and cached images depend. Historical images are still included when replaying
+that history to the Responses API. There is no automatic conversation compaction
+yet. Future history pruning must reset the representation layer and send a full
+baseline with required images. Token limits still bound long tasks.
 
 ## Browser observations and actions
 
@@ -67,12 +171,12 @@ The Python interface is `session.tools.observe()` and
 `session.tools.execute(tool_name, **arguments)`. Observations contain:
 
 - Raw accessibility and DOM snapshots for later representation processing.
-- Element IDs, accessible names, roles, values, states, bounds, and visibility.
+- Element IDs, accessible names, visible text, roles, values, states, bounds, and visibility.
 - A viewport PNG as bytes (`snapshot.screenshot`), plus URL, title, tabs, and version.
 
 The terminal prints visible elements; screenshots remain available through the
 Python interface. Raw snapshots may include hidden DOM data and are internal
-capture artifacts, not the future model-facing representation.
+capture artifacts, not the model-facing representation.
 
 IDs persist for the same DOM node within a document and expire across navigation,
 task resets, or an observation of another tab. Actions reject detached, hidden,
@@ -87,13 +191,12 @@ Iframe boundaries are reported, but their contents require coordinate actions.
 Visibility uses five hit-test points and is a heuristic for complex shapes.
 Capture is sequential, not atomic; navigation during capture is rejected.
 Browser JavaScript dialogs use Playwright's default automatic dismissal.
-No adaptive filtering, changes-only observations, or visual crops are implemented yet.
 
 ## Layout
 
 Each folder matches a part of the proposal.
-The CLI, browser lifecycle, observations, and actions are implemented. The remaining packages
-contain descriptions of the planned components.
+The CLI, browser lifecycle, observations, actions, OpenAI agent loop, and adaptive
+representation/policy are implemented. Evaluation remains a placeholder.
 
 | Folder | Proposal section | Purpose |
 |---|---|---|
@@ -109,7 +212,8 @@ contain descriptions of the planned components.
 
 - Python 3.12 with [uv](https://docs.astral.sh/uv/) for dependencies.
 - Playwright for the browser, from the proposal.
-- OpenAI custom tools are planned for the agent; the current dependency list still includes the original Anthropic SDK.
+- OpenAI's Python SDK for the Responses API, and python-dotenv for local configuration.
+- Pillow for screenshot inspection and lossless image crops.
 - pytest for tests and ruff for lint and formatting (`uv run ruff check .`, `uv run ruff format .`).
 
 Add other dependencies with `uv add <package>` when the team needs them.

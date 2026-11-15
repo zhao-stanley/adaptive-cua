@@ -17,6 +17,8 @@ class Element:
     editable: bool
     point: dict[str, float] | None
     states: dict[str, Any] = field(default_factory=dict)
+    text: str = ""
+    text_rects: list[dict[str, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -32,6 +34,7 @@ class BrowserSnapshot:
     dom_snapshot: dict[str, Any]
     tabs: list[dict[str, str]]
     warnings: list[str] = field(default_factory=list)
+    document_id: str | None = None
 
 
 @dataclass

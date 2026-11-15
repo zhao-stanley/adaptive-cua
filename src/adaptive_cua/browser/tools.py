@@ -151,16 +151,23 @@ class BrowserTools:
             node = semantic.get(backend, {})
             role = node.get("role", {}).get("value", "")
             name = node.get("name", {}).get("value", "") or info["name"]
-            if not role and info["tag"] not in {
-                "input",
-                "button",
-                "select",
-                "textarea",
-                "canvas",
-                "iframe",
-                "img",
-                "a",
-            }:
+            if (
+                not role
+                and not info["text"]
+                and info["tag"]
+                not in {
+                    "input",
+                    "button",
+                    "select",
+                    "textarea",
+                    "canvas",
+                    "iframe",
+                    "img",
+                    "a",
+                    "svg",
+                    "video",
+                }
+            ):
                 continue
             element_id = f"{self._prefix}-{self._tabs[page]}-d{document}-e{backend}"
             element = Element(
@@ -175,6 +182,8 @@ class BrowserTools:
                 info["editable"],
                 info["point"],
                 {p["name"]: p["value"].get("value") for p in node.get("properties", [])},
+                info["text"],
+                info["text_rects"],
             )
             elements.append(element)
             targets[element_id] = (page, document, backend, element)
@@ -197,6 +206,7 @@ class BrowserTools:
             ["Frame contents require coordinate actions; element IDs cover the main document only."]
             if len(page.frames) > 1
             else [],
+            document_id=f"{self._prefix}-{self._tabs[page]}-d{document}",
         )
 
     def _target(self, element_id: str):
