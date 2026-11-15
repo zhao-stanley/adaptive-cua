@@ -5,15 +5,35 @@ from dataclasses import asdict
 from src.browser.models import BrowserSnapshot
 
 
-def visible_structure(snapshot: BrowserSnapshot) -> dict[str, dict]:
+def visible_structure(snapshot: BrowserSnapshot, *, compact=True) -> dict[str, dict]:
     result = {}
     for element in snapshot.elements:
         if not element.visible:
             continue
         data = asdict(element)
-        for key in ("visible", "point", "text_rects"):
+        for key in ("visible", "point", "text_rects", "decoration_padding"):
             data.pop(key)
         data["bounds"] = {key: round(value, 1) for key, value in data["bounds"].items()}
+        if not compact:
+            result[element.id] = data
+            continue
+        # Empty structural wrappers contribute no user-visible information.
+        if (
+            not element.name
+            and not element.text
+            and element.role in {"", "generic", "none"}
+            and element.tag in {"div", "span", "section", "main", "body", "html"}
+        ):
+            continue
+        if data["text"] == data["name"]:
+            data.pop("text")
+        for key in ("name", "role", "value", "text", "states", "options"):
+            if key in data and not data[key]:
+                data.pop(key)
+        if data["enabled"]:
+            data.pop("enabled")
+        if not data["editable"]:
+            data.pop("editable")
         result[element.id] = data
     return result
 
@@ -30,7 +50,7 @@ def meaningful_change(previous: dict[str, dict], current: dict[str, dict]) -> bo
     # Focus alone is not evidence that a submit/delete/etc. operation succeeded.
     def without_focus(records):
         return {
-            key: {**value, "states": {k: v for k, v in value["states"].items() if k != "focused"}}
+            key: {**value, "states": {k: v for k, v in value.get("states", {}).items() if k != "focused"}}
             for key, value in records.items()
         }
 

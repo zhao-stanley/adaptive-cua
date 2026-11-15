@@ -111,7 +111,7 @@ def visual_candidates(snapshot: BrowserSnapshot, image: Image.Image) -> list[tup
             regions.append(element.bounds)
         # A named container does not explain all pixels inside its rectangle.
         for region in regions:
-            covered = box(region, width, height, padding=2)
+            covered = box(region, width, height, padding=math.ceil(element.decoration_padding))
             if covered:
                 draw.rectangle((covered[0], covered[1], covered[2] - 1, covered[3] - 1), fill=0)
     gray = image.convert("L")

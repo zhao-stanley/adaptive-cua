@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prior authorization · Cedar Demo Clinic</title>
+<style>
+:root{font:16px system-ui,sans-serif;color:#163139;background:#f1f5f4}*{box-sizing:border-box}body{margin:0}header{background:#153d40;color:white;padding:24px 6%;display:flex;justify-content:space-between;align-items:center}header small{color:#b8d7cc}main{max-width:1120px;margin:36px auto;padding:0 24px}h1{font-size:30px;margin:8px 0}h2{font-size:21px;margin-top:0}p{line-height:1.6}.muted{color:#546b70}.layout{display:grid;grid-template-columns:340px 1fr;gap:24px;margin-top:28px}.card{background:white;border:1px solid #d7e2df;border-radius:14px;padding:28px;box-shadow:0 4px 14px #16313905}aside{align-self:start}dl{margin:0}dt{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#546b70;margin-top:20px}dd{margin:5px 0;line-height:1.5}label{display:block;font-weight:600;margin:20px 0 7px}input,select,textarea{font:inherit;padding:12px;border:1px solid #a6bcb7;border-radius:7px;width:100%;background:white}textarea{min-height:110px}button{font:inherit;font-weight:600;padding:12px 18px;border-radius:7px;border:0;background:#176a58;color:white;cursor:pointer}button.secondary{background:#e8f0ed;color:#254f45}button:hover{filter:brightness(.95)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #d39126;outline-offset:3px}.buttons{display:flex;justify-content:space-between;gap:12px;margin-top:28px}.steps{display:flex;gap:12px;list-style:none;padding:0;margin:22px 0}.steps li{padding:8px 12px;border-radius:20px;background:#e4ece9;font-size:14px}.steps [aria-current]{background:#176a58;color:white}.notice{padding:14px;border-radius:8px;background:#fff6df;color:#70531b;font-size:14px}.error{color:#a12525;font-weight:600}input[type=checkbox]{width:auto;margin-right:8px}label.check{font-weight:400;display:flex;align-items:start;line-height:1.5}.success{background:#e6f4eb;padding:20px;border-radius:10px;color:#195b3a}[hidden]{display:none!important}@media(max-width:760px){.layout{grid-template-columns:1fr}header{padding:20px}main{margin-top:24px}}
+</style>
+</head>
+<body>
+<header><div><strong>CEDAR</strong> <small> / Demo Clinic</small></div><small>Medication authorization workspace</small></header>
+<main>
+<div class="muted">PATIENT SERVICES / NEW REQUEST</div>
+<h1>Medication prior authorization</h1>
+<p class="muted">Complete a request using the fictional chart below, review it, and submit to the demo queue.</p>
+<div class="notice">Simulation only. All names, medications, criteria, and identifiers are fictional. Nothing is sent to an insurer and no clinical decision is made.</div>
+<div class="layout">
+<aside class="card" aria-label="Fictional patient chart"><h2>Patient chart</h2><p class="muted">Case DEMO-1042 · Ready for submission</p>
+<dl><dt>Patient</dt><dd>Alex Morgan</dd><dt>Date of birth</dt><dd>1990-04-12</dd><dt>Member ID</dt><dd>DEMO-48271</dd><dt>Insurance plan</dt><dd>Cedar Demo Health</dd><dt>Requested medication</dt><dd>DemoRelief 10 mg</dd><dt>Quantity / days supply</dt><dd>30 tablets / 30 days</dd><dt>Diagnosis</dt><dd>Demo condition A</dd><dt>Previous therapy</dt><dd>DemoFirst, 8 weeks. Inadequate response.</dd><dt>Prescriber</dt><dd>Dr. Taylor Reed · DEMO-P100</dd><dt>Clinical note</dt><dd>Symptoms persisted after an 8-week trial of DemoFirst. Requesting DemoRelief for the fictional case.</dd></dl>
+</aside>
+<section class="card" aria-label="Authorization form">
+<ol class="steps"><li id="step1" aria-current="step">1. Patient</li><li id="step2">2. Medication</li><li id="step3">3. Review</li></ol>
+<p id="error" class="error" role="alert" hidden></p>
+<form id="request">
+<div id="patient">
+<h2>Verify patient details</h2>
+<label for="name">Patient name</label><input id="name" name="patient" required autocomplete="off">
+<label for="dob">Date of birth (YYYY-MM-DD)</label><input id="dob" name="dob" required placeholder="YYYY-MM-DD" pattern="\d{4}-\d{2}-\d{2}">
+<label for="member">Member ID</label><input id="member" name="member" required>
+<label for="plan">Insurance plan</label><select id="plan" name="plan" required><option value="">Choose a plan</option><option value="cedar">Cedar Demo Health</option><option value="other">Other demo plan</option></select>
+<div class="buttons"><span></span><button type="button" id="next">Continue to medication</button></div>
+</div>
+<div id="medication" hidden>
+<h2>Medication and supporting information</h2>
+<label for="drug">Requested medication</label><select id="drug" name="drug" required><option value="">Choose medication</option><option value="relief">DemoRelief 10 mg</option><option value="first">DemoFirst 5 mg</option></select>
+<label for="quantity">Quantity (tablets)</label><input id="quantity" name="quantity" type="number" min="1" required>
+<label for="days">Days supply</label><input id="days" name="days" type="number" min="1" required>
+<label for="diagnosis">Diagnosis</label><select id="diagnosis" name="diagnosis" required><option value="">Choose diagnosis</option><option value="a">Demo condition A</option><option value="b">Demo condition B</option></select>
+<label for="therapy">Previous therapy outcome</label><select id="therapy" name="therapy" required><option value="">Choose outcome</option><option value="inadequate">DemoFirst — inadequate response after 8 weeks</option><option value="none">No previous therapy</option></select>
+<label for="reason">Reason for request</label><textarea id="reason" name="reason" required placeholder="Summarize the clinical note from the chart"></textarea>
+<div class="buttons"><button type="button" class="secondary" id="back">Back to patient</button><button type="button" id="review">Review request</button></div>
+</div>
+<div id="reviewPanel" hidden><h2>Review before submission</h2><dl id="summary"></dl><label class="check"><input id="confirm" type="checkbox">I confirm this request matches the fictional patient chart.</label><div class="buttons"><button type="button" class="secondary" id="edit">Edit medication</button><button type="button" id="submit">Submit demo request</button></div></div>
+</form>
+<div id="receipt" hidden><div class="success" role="status"><h2>Request submitted</h2><p>Confirmation: <strong>PA-DEMO-1042</strong></p><p>Status: <strong>Pending demo review</strong></p><p>Alex Morgan · DemoRelief 10 mg · 30 tablets / 30 days</p></div><p class="muted">The simulated workflow is complete. This receipt does not indicate medication approval.</p></div>
+<div class="buttons"><button type="button" class="secondary" id="reset">Reset demo</button></div>
+</section></div></main>
+<script>
+const $=id=>document.getElementById(id);
+let step=1;
+function show(n){step=n;['patient','medication','reviewPanel'].forEach((id,i)=>$(id).hidden=i!==n-1);[1,2,3].forEach(i=>{if(i===n)$('step'+i).setAttribute('aria-current','step');else $('step'+i).removeAttribute('aria-current')});$('error').hidden=true;}
+function error(message){$('error').textContent=message;$('error').hidden=false;$('error').scrollIntoView({block:'center'});}
+function valid(id){return [...$(id).querySelectorAll('input,select,textarea')].every(e=>e.reportValidity());}
+$('request').addEventListener('submit',e=>e.preventDefault());
+$('next').onclick=()=>{if(valid('patient'))show(2)};
+$('back').onclick=()=>show(1);$('edit').onclick=()=>show(2);
+$('review').onclick=()=>{if(!valid('medication'))return;const rows=[['Patient',$('name').value],['Date of birth',$('dob').value],['Member ID',$('member').value],['Plan',$('plan').selectedOptions[0].text],['Medication',$('drug').selectedOptions[0].text],['Quantity / days supply',`${$('quantity').value} tablets / ${$('days').value} days`],['Diagnosis',$('diagnosis').selectedOptions[0].text],['Previous therapy',$('therapy').selectedOptions[0].text],['Reason',$('reason').value]];$('summary').replaceChildren();for(const [key,value] of rows){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;$('summary').append(dt,dd)}$('confirm').checked=false;show(3)};
+$('submit').onclick=()=>{
+if(!$('confirm').checked)return error('Confirm the request matches the chart before submitting.');
+const expected={name:'Alex Morgan',dob:'1990-04-12',member:'DEMO-48271',plan:'cedar',drug:'relief',quantity:'30',days:'30',diagnosis:'a',therapy:'inadequate'};
+for(const [id,value] of Object.entries(expected)){if($(id).value.trim()!==value){show(['name','dob','member','plan'].includes(id)?1:2);return error('A field does not match the patient chart. Check the details and review again.')}}
+if(!$('reason').value.trim()){show(2);return error('Include a reason from the clinical note.');}
+$('request').hidden=true;document.querySelector('.steps').hidden=true;$('error').hidden=true;$('receipt').hidden=false;$('receipt').scrollIntoView({block:'center'});
+};
+$('reset').onclick=()=>{$('request').reset();$('request').hidden=false;document.querySelector('.steps').hidden=false;$('receipt').hidden=true;show(1)};
+</script>
+</body></html>

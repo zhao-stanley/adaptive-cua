@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from src.agent.config import AgentConfig
 from src.agent.model import ModelError, OpenAIModel
 from src.agent.tools import parse_arguments
-from src.agent.trace import RunTrace
 from src.browser.session import BrowserSession
+from src.ops.trace import RunTrace
 from src.representation.observations import AdaptiveObservations
 from src.representation.visual import ObservationError, inspection_region
 
@@ -28,6 +28,9 @@ class Agent:
         self.history: list[dict] = []
         self.total_tokens = 0
         self.context_tokens = 0
+        self.compaction_floor = 0
+        self.compaction_rebase_pending = False
+        self.deadline = None
         self.compaction_disabled = False
         self.observations = AdaptiveObservations(
             mode=config.observation_mode,
@@ -37,7 +40,10 @@ class Agent:
         self.trace.event("start", model=config.model, observation_mode=config.observation_mode)
 
     def close(self):
-        self.model.close()
+        try:
+            self.model.close()
+        finally:
+            self.trace.close()
 
     def _repair_pending_calls(self):
         """Keep history valid if interruption happens between response and tool output."""
@@ -98,7 +104,13 @@ class Agent:
         started = time.monotonic()
         requested = args["detail"] if name == "request_observation" else ("full" if name == "observe" else "auto")
         result = (
-            self.session.tools.execute("observe")
+            self.session.tools.fill_form(
+                **args,
+                deadline=self.deadline,
+                emit_step=lambda data: self.trace.event("batch_action", call_id=call["call_id"], **data),
+            )
+            if name == "fill_form"
+            else self.session.tools.execute("observe")
             if name in {"request_observation", "inspect_region"}
             else self.session.tools.execute(name, **args)
         )
@@ -117,6 +129,7 @@ class Agent:
             call,
             {
                 "status": result.status,
+                **({"steps": result.steps} if result.steps else {}),
                 "executed": result.executed,
                 "error": result.error,
                 "latency_seconds": time.monotonic() - started,
@@ -134,7 +147,7 @@ class Agent:
 
     def _compact_if_needed(self, deadline, emit):
         threshold = self.config.compact_after_tokens
-        if not threshold or self.compaction_disabled or self.context_tokens < threshold:
+        if not threshold or self.compaction_disabled or self.context_tokens < max(threshold, self.compaction_floor):
             return
         answered = {item["call_id"] for item in self.history if item.get("type") == "function_call_output"}
         if any(item.get("type") == "function_call" and item["call_id"] not in answered for item in self.history):
@@ -158,21 +171,31 @@ class Agent:
             return
         # Keep the provider's complete replacement window, including retained messages.
         self.history = list(output)
+        self.compaction_rebase_pending = True
+        before_tokens = self.context_tokens
         self.context_tokens = 0
+        # Avoid compacting every turn if the provider retains a large baseline.
+        self.compaction_floor = max(threshold, (usage.get("output_tokens") or 0) + threshold // 2)
         self.observations.reset()
         self.trace.event(
-            "compaction", usage=usage, total_tokens=self.total_tokens, latency_seconds=time.monotonic() - started
+            "compaction",
+            usage=usage,
+            total_tokens=self.total_tokens,
+            context_tokens_before=before_tokens,
+            next_compaction_threshold=self.compaction_floor,
+            latency_seconds=time.monotonic() - started,
         )
         fresh = self.session.tools.execute("observe")
         if fresh.observation is None:
             raise ObservationError("History compacted, but browser refresh failed; send a follow-up to retry.")
-        prepared = self.observations.prepare(fresh.observation, force_full=True, requested="screenshot")
+        prepared = self.observations.prepare(fresh.observation, force_full=True)
         self.history.append({"role": "user", "content": prepared.content()})
         self.trace.observation(fresh.observation, prepared)
         emit("[memory] Task history compacted; fresh browser baseline supplied")
 
     def _run(self, message: str, emit: Callable[[str], None]) -> AgentOutcome:
         deadline = time.monotonic() + self.config.max_seconds
+        self.deadline = deadline
         if self.total_tokens >= self.config.max_tokens:
             return AgentOutcome("limit", "Task token limit reached. Use /new to start a fresh task.")
         self.trace.event("user", message=message)
@@ -208,6 +231,15 @@ class Agent:
             usage = response.get("usage") or {}
             self.total_tokens += usage.get("total_tokens", 0)
             self.context_tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+            if self.compaction_rebase_pending:
+                self.compaction_floor = max(
+                    self.config.compact_after_tokens,
+                    self.context_tokens + self.config.compact_after_tokens // 2,
+                )
+                self.compaction_rebase_pending = False
+            emit(
+                f"[tokens] Context {self.context_tokens:,}; cumulative {self.total_tokens:,}/{self.config.max_tokens:,}"
+            )
             outputs = response.get("output", [])
             calls = [item for item in outputs if item.get("type") == "function_call"]
             text = "\n".join(
@@ -299,7 +331,7 @@ class Agent:
 
 
 def create_agent(session: BrowserSession, config: AgentConfig | None = None) -> Agent:
-    config = config or AgentConfig.from_env()
+    config = config or AgentConfig()
     model = OpenAIModel(config)
     try:
         return Agent(session, model, config)

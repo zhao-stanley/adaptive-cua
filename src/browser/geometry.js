@@ -52,7 +52,13 @@ function () {
             }
         }
     }
+    const style = getComputedStyle(el);
+    const outline = Math.max(0, parseFloat(style.outlineWidth) || 0) + Math.max(0, parseFloat(style.outlineOffset) || 0);
     return {
+        decoration_padding: Math.min(12, Math.max(2, outline + 2)),
+        options: el instanceof HTMLSelectElement ? Array.from(el.options)
+            .filter(o => !o.hidden && !o.parentElement.hidden && getComputedStyle(o).display !== 'none')
+            .map(o => ({label: o.label, value: o.value, disabled: o.disabled || o.parentElement.disabled === true})) : [],
         tag: el.localName, bounds, visible: !!point, point,
         enabled: !el.matches(':disabled') && !el.closest('[inert], [aria-disabled="true"]'),
         editable: !el.readOnly && (el.isContentEditable || el.matches('textarea, input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]):not([type=file])')),

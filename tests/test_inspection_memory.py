@@ -102,7 +102,7 @@ def test_compaction_keeps_window_pairs_calls_and_resets_visuals(tmp_path):
     assert any(i.get("type") == "function_call_output" and i["call_id"] == "c1" for i in compact_input)
     fresh = latest_observation(model.requests[1])
     assert fresh["structure_mode"] == "full" and fresh["reset_visuals"]
-    assert fresh["visuals"][0]["image_index"] == 0
+    assert fresh["visuals"] == []  # Text-only baseline needs no screenshot.
     assert agent.total_tokens == 140
     assert "private-memory" not in (agent.trace.path / "events.jsonl").read_text()
 
@@ -199,7 +199,8 @@ def test_browser_inspection_and_compaction(tmp_path):
         assert agent.run("Inspect red canvas", emit=lambda _: None).status == "completed"
         tool_output = next(i for i in model.compactions[0] if i.get("type") == "function_call_output")
         assert any(p["type"] == "input_image" for p in tool_output["output"])
-        assert latest_observation(model.requests[1])["level"] == "screenshot"
+        assert latest_observation(model.requests[1])["level"] == "crops"
+        assert latest_observation(model.requests[1])["visuals"][0]["image_index"] == 0
     finally:
         session.close()
 

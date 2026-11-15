@@ -184,6 +184,8 @@ class BrowserTools:
                 {p["name"]: p["value"].get("value") for p in node.get("properties", [])},
                 info["text"],
                 info["text_rects"],
+                info["options"],
+                info["decoration_padding"],
             )
             elements.append(element)
             targets[element_id] = (page, document, backend, element)
@@ -225,7 +227,90 @@ class BrowserTools:
             raise TargetError("Element is disabled.")
         if any(abs(info["bounds"][key] - previous.bounds[key]) > 2 for key in previous.bounds):
             raise TargetError("Element moved since observation; observe again.")
+        nodes = self._client(page).send(
+            "Accessibility.getPartialAXTree",
+            {
+                "backendNodeId": backend,
+                "fetchRelatives": False,
+            },
+        )["nodes"]
+        node = next((n for n in nodes if n.get("backendDOMNodeId") == backend and not n.get("ignored")), {})
+        name = node.get("name", {}).get("value", "") or info["name"]
+        states = {p["name"]: p["value"].get("value") for p in node.get("properties", []) if p["name"] != "focused"}
+        old_states = {k: v for k, v in previous.states.items() if k != "focused"}
+        if (
+            name != previous.name
+            or node.get("role", {}).get("value", "") != previous.role
+            or info["text"] != previous.text
+            or info["value"] != previous.value
+            or info["editable"] != previous.editable
+            or info["options"] != previous.options
+            or states != old_states
+        ):
+            raise TargetError("Element content or state changed since observation; observe again.")
         return backend, info
+
+    def fill_form(self, actions, observation_version, *, emit_step=lambda data: None, deadline=None):
+        """Fill independent fields against the original snapshot; never silently rebase targets."""
+        import time
+
+        steps = []
+        attempted = False
+        try:
+            if type(observation_version) is not int or observation_version != self.version:
+                raise TargetError("Observation version is stale; observe again.")
+            if not isinstance(actions, list) or not 1 <= len(actions) <= 5:
+                raise ValueError("A form batch needs one to five actions.")
+            ids = set()
+            for action in actions:
+                if not isinstance(action, dict) or set(action) != {"action", "element_id", "value"}:
+                    raise ValueError("Each field requires action, element_id, and value.")
+                if action["action"] not in {"type_text", "select_option"} or not all(
+                    isinstance(action[k], str) for k in ("element_id", "value")
+                ):
+                    raise ValueError("Only text entry and native select actions may be batched.")
+                if action["element_id"] in ids:
+                    raise ValueError("Each field may occur only once in a batch.")
+                ids.add(action["element_id"])
+                self._target(action["element_id"])
+            page = self.page
+            document = self._document(self._client(page))
+            pages = list(page.context.pages)
+            url = page.url
+            for index, action in enumerate(actions):
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TargetError("Time budget reached; remaining fields were not filled.")
+                if (
+                    page != self.page
+                    or page.url != url
+                    or page.context.pages != pages
+                    or self._document(self._client(page)) != document
+                ):
+                    raise TargetError("Page or tabs changed; remaining fields were not filled.")
+                # Original target registry stays intact until the final observation.
+                self._target(action["element_id"])
+                emit_step({"index": index, "action": action, "status": "started", "executed": None})
+                attempted = True
+                key = "text" if action["action"] == "type_text" else "value"
+                self._perform(action["action"], {"element_id": action["element_id"], key: action["value"]})
+                completed = {"index": index, "action": action, "status": "ok", "executed": True}
+                steps.append(completed)
+                emit_step(completed)
+                attempted = False
+                # Verify the entered value before moving on, including JS input/change side effects.
+                _, _, backend, _ = self._targets[action["element_id"]]
+                info = self._on_node(self._client(page), backend, GEOMETRY)
+                if not info or info["type"] == "password" or info["value"] != action["value"]:
+                    raise TargetError("Field value could not be verified; inspect before continuing.")
+            return ActionResult("ok", self.observe(), executed=True, steps=steps)
+        except (TargetError, ValueError, Error) as exc:
+            if attempted:
+                uncertain = {"index": len(steps), "status": "uncertain", "executed": None}
+                steps.append(uncertain)
+                emit_step(uncertain)
+            return ActionResult(
+                "batch_stopped", error=str(exc), executed=None if attempted else bool(steps), steps=steps
+            )
 
     def _point(self, x, y):
         viewport = self.page.viewport_size

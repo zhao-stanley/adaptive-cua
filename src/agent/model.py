@@ -26,6 +26,11 @@ Prefer element IDs; use coordinates for visual content without a usable element 
 Use the latest observation_version for every browser action. Never invent IDs.
 Call exactly one tool per response. Observe again after stale-target errors, uncertain actions,
 or asynchronous loading; do not blindly repeat a possibly executed action.
+Element records omit empty fields; defaults are enabled=true, editable=false, value/name/text="", states/options empty.
+Updated records replace whole records, so omitted fields reset to these defaults.
+Select elements expose options with label, value and disabled. Use select_option with the exact value.
+Use fill_form to fill up to five independent visible fields together. Only batch type_text/select_option,
+never submit or navigate in a batch. If a batch stops, inspect completed steps and never replay them blindly.
 Typing replaces a field's value. Scroll to reveal offscreen content. Iframe contents use coordinates.
 You cannot execute code, use a shell, or access hidden application data.
 Ask the user with ask_user when necessary information is missing; do not invent personal details.

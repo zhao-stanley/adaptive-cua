@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -113,51 +112,13 @@ def main() -> int:
     load_dotenv(Path.cwd() / ".env", override=False)
     parser = argparse.ArgumentParser(description="Chat with an OpenAI model controlling an isolated browser.")
     parser.add_argument("--headless", action="store_true", help="Run Chromium without a visible window.")
-    parser.add_argument(
-        "--model", default=os.environ.get("OPENAI_MODEL", ""), help="OpenAI model ID (or OPENAI_MODEL)."
-    )
-    parser.add_argument("--max-steps", type=int, default=30, help="Maximum model requests per user message.")
-    parser.add_argument("--max-seconds", type=float, default=300, help="Time budget per user message.")
-    parser.add_argument("--max-tokens", type=int, default=100_000, help="Cumulative token budget per task.")
-    parser.add_argument("--max-output-tokens", type=int, default=4096, help="Output token cap per model request.")
-    parser.add_argument("--api-timeout", type=float, default=60, help="Maximum time for one API request.")
-    parser.add_argument("--trace-dir", type=Path, default=Path("runs"), help="Directory for local task traces.")
-    parser.add_argument(
-        "--observation-mode",
-        choices=["adaptive", "full"],
-        default="adaptive",
-        help="Adaptive text/diffs/crops, or full structure and screenshot every step.",
-    )
-    parser.add_argument(
-        "--full-refresh-interval",
-        type=int,
-        default=12,
-        help="Send full structure after this many deltas; 0 disables periodic refreshes.",
-    )
-    parser.add_argument(
-        "--compact-after-tokens",
-        type=int,
-        default=24_000,
-        help="Compact history after this many reported context tokens; 0 disables compaction.",
-    )
     args = parser.parse_args()
     try:
         return run_chat(
             BrowserSession(headless=args.headless),
             agent_factory=lambda session: create_agent(
                 session,
-                AgentConfig(
-                    model=args.model,
-                    max_steps=args.max_steps,
-                    max_seconds=args.max_seconds,
-                    max_tokens=args.max_tokens,
-                    max_output_tokens=args.max_output_tokens,
-                    api_timeout=args.api_timeout,
-                    trace_dir=args.trace_dir,
-                    observation_mode=args.observation_mode,
-                    full_refresh_interval=args.full_refresh_interval,
-                    compact_after_tokens=args.compact_after_tokens,
-                ),
+                AgentConfig(),
             ),
         )
     except PlaywrightError as exc:

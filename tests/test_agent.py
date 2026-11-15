@@ -273,7 +273,7 @@ def browser_call(name, target_name=None, **args):
         current = latest_observation(history)
         arguments = dict(args, observation_version=current["observation_version"])
         if target_name:
-            arguments["element_id"] = next(e["id"] for e in current["elements"] if e["name"] == target_name)
+            arguments["element_id"] = next(e["id"] for e in current["elements"] if e.get("name", "") == target_name)
         return response(call(name, arguments, f"c{len(history)}"))
 
     return choose
@@ -288,7 +288,7 @@ def test_real_browser_checkout_driven_by_model_responses(tmp_path):
         <button>Place order</button></form><h2></h2>""")
 
     def finish(history):
-        assert any(e["name"] == "Order placed" for e in latest_observation(history)["elements"])
+        assert any(e.get("name", "") == "Order placed" for e in latest_observation(history)["elements"])
         return response(call("finish", {"status": "completed", "message": "The page confirms Order placed."}, "done"))
 
     model = ScriptedModel(
@@ -329,7 +329,7 @@ def test_real_browser_inbox_driven_by_model_responses(tmp_path):
     try:
         assert agent.run("Delete spam", emit=lambda _: None).status == "completed"
         assert session.page.get_by_role("button", name="Delete spam").count() == 0
-        assert "Delete spam" not in [e["name"] for e in latest_observation(model.requests[0])["elements"]]
+        assert "Delete spam" not in [e.get("name", "") for e in latest_observation(model.requests[0])["elements"]]
     finally:
         agent.close()
         session.close()

@@ -15,7 +15,7 @@ def observation_data(snapshot: BrowserSnapshot) -> dict:
         "title": snapshot.title,
         "viewport": snapshot.viewport,
         "tabs": snapshot.tabs,
-        "elements": list(visible_structure(snapshot).values()),
+        "elements": list(visible_structure(snapshot, compact=False).values()),
         "document_id": snapshot.document_id,
         "warnings": snapshot.warnings,
     }

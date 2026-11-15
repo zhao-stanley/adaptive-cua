@@ -22,7 +22,7 @@ class PreparedObservation:
     images: list[bytes]
 
     def content(self) -> list[dict]:
-        return [{"type": "input_text", "text": json.dumps(self.data, ensure_ascii=False)}] + [
+        return [{"type": "input_text", "text": json.dumps(self.data, ensure_ascii=False, separators=(",", ":"))}] + [
             {"type": "input_image", "image_url": "data:image/png;base64," + base64.b64encode(png).decode()}
             for png in self.images
         ]

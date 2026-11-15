@@ -89,6 +89,30 @@ def build_schemas():
             },
         )
     )
+    schemas.append(
+        function_schema(
+            "fill_form",
+            "Fill 1–5 independent visible text/select fields, stopping on changes or failures.",
+            {
+                "observation_version": {"type": "integer"},
+                "actions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["action", "element_id", "value"],
+                        "properties": {
+                            "action": {"type": "string", "enum": ["type_text", "select_option"]},
+                            "element_id": {"type": "string"},
+                            "value": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        )
+    )
     return schemas
 
 
@@ -111,9 +135,25 @@ def parse_arguments(name: str, arguments: str) -> dict:
             or (isinstance(value, str) and "string" in kinds)
             or (type(value) is int and "integer" in kinds)
             or (type(value) in {int, float} and "number" in kinds)
+            or (isinstance(value, list) and "array" in kinds)
         )
         if not matches or ("enum" in prop and value not in prop["enum"]):
             raise ValueError(f"Invalid {key}.")
+    if name == "fill_form":
+        actions = values["actions"]
+        if not 1 <= len(actions) <= 5:
+            raise ValueError("A batch requires one to five fields.")
+        ids = set()
+        for action in actions:
+            if not isinstance(action, dict) or set(action) != {"action", "element_id", "value"}:
+                raise ValueError("Invalid form action fields.")
+            if (
+                not all(isinstance(v, str) for v in action.values())
+                or action["action"] not in {"type_text", "select_option"}
+                or action["element_id"] in ids
+            ):
+                raise ValueError("Invalid or repeated form target.")
+            ids.add(action["element_id"])
     if name == "ask_user" and not values["question"].strip():
         raise ValueError("Question must not be empty.")
     if name == "finish" and not values["message"].strip():

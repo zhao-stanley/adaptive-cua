@@ -26,8 +26,8 @@ def test_real_form_keeps_paragraph_and_confirmation_text_without_images(browser)
     initial = browser.tools.observe()
     prepared = adapter.prepare(initial)
     assert not prepared.images
-    assert any(e["text"] == "Shipping costs $5." for e in prepared.data["elements"])
-    assert not any("Secret promo" in e["text"] for e in prepared.data["elements"])
+    assert any(e.get("text", e.get("name", "")) == "Shipping costs $5." for e in prepared.data["elements"])
+    assert not any("Secret promo" in e.get("text", e.get("name", "")) for e in prepared.data["elements"])
     field = next(e for e in initial.elements if e.name == "Name")
     result = browser.tools.execute("type_text", element_id=field.id, text="Jane")
     update = adapter.prepare(result.observation, action="type_text", arguments={"element_id": field.id, "text": "Jane"})
@@ -36,7 +36,10 @@ def test_real_form_keeps_paragraph_and_confirmation_text_without_images(browser)
     submitted = browser.tools.execute("click", element_id=button.id)
     confirmation = adapter.prepare(submitted.observation, action="click", arguments={"element_id": button.id})
     assert confirmation.data["structure_mode"] == "delta" and not confirmation.images
-    assert any(e["text"] == "Order placed for Jane" for e in confirmation.data["added"] + confirmation.data["updated"])
+    assert any(
+        e.get("text", e.get("name", "")) == "Order placed for Jane"
+        for e in confirmation.data["added"] + confirmation.data["updated"]
+    )
 
 
 def test_real_canvas_is_cropped_and_updated_when_pixels_change(browser):
